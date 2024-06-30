@@ -8,102 +8,190 @@
 import SpriteKit
 import GameplayKit
 
-class GameScene: SKScene {
+final class GameScene: SKScene {
     
-    var entities = [GKEntity]()
-    var graphs = [String : GKGraph]()
-    
-    private var lastUpdateTime : TimeInterval = 0
-    private var label : SKLabelNode?
-    private var spinnyNode : SKShapeNode?
+    private var gameModel = GameModel()
+    private let scoreLabel = SKLabelNode(text: "0")
+    private let nextBallImage = SKSpriteNode()
     
     override func sceneDidLoad() {
-
-        self.lastUpdateTime = 0
+    
+        physicsWorld.gravity = CGVector(dx: 0, dy: -9.8)
+        physicsWorld.contactDelegate = self
         
-        // Get label node from scene and store it for use later
-        self.label = self.childNode(withName: "//helloLabel") as? SKLabelNode
-        if let label = self.label {
-            label.alpha = 0.0
-            label.run(SKAction.fadeIn(withDuration: 2.0))
-        }
+        configureBoundary()
+        configureGameOverLine()
+        configureScoreLabel()
+        configureNextBallImage()
         
-        // Create shape node to use during mouse interaction
-        let w = (self.size.width + self.size.height) * 0.05
-        self.spinnyNode = SKShapeNode.init(rectOf: CGSize.init(width: w, height: w), cornerRadius: w * 0.3)
-        
-        if let spinnyNode = self.spinnyNode {
-            spinnyNode.lineWidth = 2.5
-            
-            spinnyNode.run(SKAction.repeatForever(SKAction.rotate(byAngle: CGFloat(Double.pi), duration: 1)))
-            spinnyNode.run(SKAction.sequence([SKAction.wait(forDuration: 0.5),
-                                              SKAction.fadeOut(withDuration: 0.5),
-                                              SKAction.removeFromParent()]))
-        }
-    }
-    
-    
-    func touchDown(atPoint pos : CGPoint) {
-        if let n = self.spinnyNode?.copy() as! SKShapeNode? {
-            n.position = pos
-            n.strokeColor = SKColor.green
-            self.addChild(n)
-        }
-    }
-    
-    func touchMoved(toPoint pos : CGPoint) {
-        if let n = self.spinnyNode?.copy() as! SKShapeNode? {
-            n.position = pos
-            n.strokeColor = SKColor.blue
-            self.addChild(n)
-        }
-    }
-    
-    func touchUp(atPoint pos : CGPoint) {
-        if let n = self.spinnyNode?.copy() as! SKShapeNode? {
-            n.position = pos
-            n.strokeColor = SKColor.red
-            self.addChild(n)
-        }
     }
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if let label = self.label {
-            label.run(SKAction.init(named: "Pulse")!, withKey: "fadeInOut")
+        super.touchesMoved(touches, with: event)
+        
+        guard let touch = touches.first else { return }
+        let touchLocation = touch.location(in: self)
+        
+        makeFruit(what: gameModel.nextBall,
+                  where: CGPoint(x: touchLocation.x,
+                                 y: frame.height * 0.8))
+        
+        gameModel.randomBall()
+        let newTexture = SKTexture(imageNamed: gameModel.nextBall.fileNamed)
+        nextBallImage.texture = newTexture
+    }
+    
+}
+
+extension GameScene {
+    
+    private func configureBoundary() {
+        
+        let boundary = SKPhysicsBody(edgeLoopFrom: self.frame)
+        boundary.categoryBitMask = PhysicsCategory.wall.bitmask
+        boundary.collisionBitMask = PhysicsCategory.all.bitmask
+        boundary.restitution = 0.3
+        boundary.isDynamic = true
+        
+        self.physicsBody = boundary
+    }
+    
+    private func configureScoreLabel() {
+        
+        scoreLabel.fontSize = 20
+        scoreLabel.fontColor = .white
+        scoreLabel.horizontalAlignmentMode = .right
+        scoreLabel.position = CGPoint(x: frame.width - 20,
+                                 y: frame.height * 0.88)
+
+        addChild(scoreLabel)
+    }
+    
+    private func configureNextBallImage() {
+        
+        nextBallImage.position = CGPoint(x: 20,
+                                         y: frame.height * 0.88)
+        nextBallImage.size = CGSize(width: 30,
+                                    height: 30)
+
+        addChild(nextBallImage)
+        
+        let newTexture = SKTexture(imageNamed: gameModel.nextBall.fileNamed)
+        nextBallImage.texture = newTexture
+    }
+    
+    private func configureGameOverLine() {
+        let line = SKShapeNode(rect: CGRect(x: 0,
+                                            y: frame.height * 0.85,
+                                            width: frame.width,
+                                            height: 5))
+        line.fillColor = .red
+        
+        addChild(line)
+    
+        line.physicsBody = SKPhysicsBody(edgeLoopFrom: CGRect(x: 0,
+                                                              y: frame.height * 0.85,
+                                                              width: frame.width,
+                                                              height: 5))
+        line.physicsBody?.affectedByGravity = false
+        line.physicsBody?.categoryBitMask = PhysicsCategory.gameOverLine.bitmask
+        line.physicsBody?.contactTestBitMask = PhysicsCategory.monsterBall.bitmask | PhysicsCategory.healBall.bitmask | PhysicsCategory.premierBall.bitmask | PhysicsCategory.heavyBall.bitmask | PhysicsCategory.diveBall.bitmask | PhysicsCategory.friendBall.bitmask | PhysicsCategory.hiperBall.bitmask | PhysicsCategory.luxuryBall.bitmask | PhysicsCategory.masterBall.bitmask | PhysicsCategory.superBall.bitmask
+        
+        line.physicsBody?.collisionBitMask = PhysicsCategory.none.bitmask
+    }
+    
+    private func makeFruit(what type: PhysicsCategory,
+                           where position: CGPoint) {
+        
+        let fruit = SKSpriteNode(imageNamed: type.fileNamed)
+        fruit.size = CGSize(width: type.radius * 2,
+                            height: type.radius * 2)
+        
+        
+        fruit.position = position
+        addChild(fruit)
+        
+        fruit.physicsBody = SKPhysicsBody(circleOfRadius: type.radius)
+        
+        fruit.physicsBody?.categoryBitMask = type.bitmask
+        fruit.physicsBody?.contactTestBitMask = type.bitmask | PhysicsCategory.gameOverLine.bitmask
+        fruit.physicsBody?.collisionBitMask = PhysicsCategory.all.bitmask
+        fruit.physicsBody?.restitution = 0.3
+        fruit.physicsBody?.isDynamic = true
+    }
+    
+    private func merge(what type: PhysicsCategory,
+                       where position: CGPoint) {
+        
+        makeFruit(what: type,
+                  where: position)
+        gameModel.score += type.mergeScore
+        
+    }
+    
+    private func murgeResultOfFruit(_ bitmask: UInt32) -> PhysicsCategory {
+        switch bitmask {
+        case PhysicsCategory.monsterBall.bitmask:
+            return .healBall
+        case PhysicsCategory.healBall.bitmask:
+            return .heavyBall
+        case PhysicsCategory.heavyBall.bitmask:
+            return .superBall
+        case PhysicsCategory.superBall.bitmask:
+            return .premierBall
+        case PhysicsCategory.premierBall.bitmask:
+            return .friendBall
+        case PhysicsCategory.friendBall.bitmask:
+            return .luxuryBall
+        case PhysicsCategory.luxuryBall.bitmask:
+            return .diveBall
+        case PhysicsCategory.diveBall.bitmask:
+            return .hiperBall
+        case PhysicsCategory.hiperBall.bitmask:
+            return .masterBall
+        default:
+            return .none
+        }
+    }
+    
+}
+
+extension GameScene: SKPhysicsContactDelegate {
+    
+    func didBegin(_ contact: SKPhysicsContact) {
+        var firstBody: SKPhysicsBody
+        var secondBody: SKPhysicsBody
+        
+        if contact.bodyA.categoryBitMask < contact.bodyB.categoryBitMask {
+            firstBody = contact.bodyA
+            secondBody = contact.bodyB
+        } else {
+            firstBody = contact.bodyB
+            secondBody = contact.bodyA
         }
         
-        for t in touches { self.touchDown(atPoint: t.location(in: self)) }
-    }
-    
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for t in touches { self.touchMoved(toPoint: t.location(in: self)) }
-    }
-    
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for t in touches { self.touchUp(atPoint: t.location(in: self)) }
-    }
-    
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for t in touches { self.touchUp(atPoint: t.location(in: self)) }
-    }
-    
-    
-    override func update(_ currentTime: TimeInterval) {
-        // Called before each frame is rendered
-        
-        // Initialize _lastUpdateTime if it has not already been
-        if (self.lastUpdateTime == 0) {
-            self.lastUpdateTime = currentTime
+        if firstBody.categoryBitMask == secondBody.categoryBitMask  {
+            
+            if let position = secondBody.node?.position {
+                firstBody.node?.removeFromParent()
+                secondBody.node?.removeFromParent()
+                
+                let fruit = murgeResultOfFruit(firstBody.categoryBitMask)
+                
+                merge(what: fruit, where: position)
+                scoreLabel.text = String(gameModel.score)
+            }
         }
         
-        // Calculate time since last update
-        let dt = currentTime - self.lastUpdateTime
-        
-        // Update entities
-        for entity in self.entities {
-            entity.update(deltaTime: dt)
+        if secondBody.categoryBitMask == PhysicsCategory.gameOverLine.bitmask {
+            
+            let gameOverScene = GameOverScene(size: self.size,
+                                              score: gameModel.score)
+            
+            view?.presentScene(gameOverScene)
+            
         }
         
-        self.lastUpdateTime = currentTime
     }
+    
 }
